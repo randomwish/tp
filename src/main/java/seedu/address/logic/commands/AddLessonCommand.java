@@ -6,13 +6,19 @@ import static seedu.address.logic.parser.CliSyntax.PREFIX_END_TIME;
 import static seedu.address.logic.parser.CliSyntax.PREFIX_NAME;
 import static seedu.address.logic.parser.CliSyntax.PREFIX_START_TIME;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
+import java.util.logging.Logger;
+
+import seedu.address.commons.core.LogsCenter;
 import seedu.address.commons.util.ToStringBuilder;
 import seedu.address.logic.commands.exceptions.CommandException;
 import seedu.address.model.Model;
 import seedu.address.model.lesson.Lesson;
 
 /**
- * Adds a weekly lesson to the address book.
+ * Adds a weekly lesson to the address book, warning of any lessons whose times it overlaps.
  */
 public class AddLessonCommand extends Command {
 
@@ -34,6 +40,9 @@ public class AddLessonCommand extends Command {
 
     public static final String MESSAGE_SUCCESS = "New lesson added: %1$s";
     public static final String MESSAGE_DUPLICATE_LESSON = "This lesson already exists";
+    public static final String MESSAGE_CLASH_WARNING = "Warning: clashes with %1$s";
+
+    private static final Logger logger = LogsCenter.getLogger(AddLessonCommand.class);
 
     private final Lesson toAdd;
 
@@ -49,10 +58,27 @@ public class AddLessonCommand extends Command {
         requireNonNull(model);
 
         if (model.hasLesson(toAdd)) {
+            logger.fine("Rejected duplicate lesson: " + toAdd);
             throw new CommandException(MESSAGE_DUPLICATE_LESSON);
         }
 
+        List<Lesson> clashingLessons = model.getAddressBook().getClashingLessons(toAdd);
         model.addLesson(toAdd);
+        return new CommandResult(String.format(MESSAGE_SUCCESS, toAdd) + getClashWarning(clashingLessons));
+    }
+
+    /**
+     * Returns a warning on a new line naming {@code clashingLessons}, or an empty string if there are none.
+     * Clashes are allowed, as the tutor may teach overlapping lessons on purpose.
+     */
+    private static String getClashWarning(List<Lesson> clashingLessons) {
+        if (clashingLessons.isEmpty()) {
+            return "";
+        }
+        String clashes = clashingLessons.stream().map(Lesson::toString).collect(Collectors.joining("; "));
+        return "\n" + String.format(MESSAGE_CLASH_WARNING, clashes);
+        assert model.getFilteredLessonList().contains(toAdd) : "Adding a lesson should clear the lesson filter";
+        logger.info("Added lesson: " + toAdd);
         return new CommandResult(String.format(MESSAGE_SUCCESS, toAdd));
     }
 
