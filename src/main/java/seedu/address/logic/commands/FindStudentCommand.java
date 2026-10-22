@@ -32,7 +32,7 @@ public class FindStudentCommand extends Command {
 
     private static final Logger logger = LogsCenter.getLogger(FindStudentCommand.class);
 
-    private final StudentNameContainsKeywordsPredicate predicate;
+    private final StudentContainsKeywordsPredicate predicate;
 
     /**
      * Creates a command that filters the student list with {@code predicate}.
@@ -40,6 +40,11 @@ public class FindStudentCommand extends Command {
     public FindStudentCommand(StudentContainsKeywordsPredicate predicate) {
         requireNonNull(predicate);
         this.predicate = predicate;
+    }
+
+    @Override
+    public boolean changesStoredData() {
+        return false;
     }
 
     @Override
