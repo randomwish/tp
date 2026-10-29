@@ -30,6 +30,8 @@ public class ListLessonsCommandParserTest {
         assertParseSuccess(parser, " d/mon", new ListLessonsCommand(DayOfWeek.MONDAY));
         assertParseSuccess(parser, " d/WED", new ListLessonsCommand(DayOfWeek.WEDNESDAY));
         assertParseSuccess(parser, " d/  sun  ", new ListLessonsCommand(DayOfWeek.SUNDAY));
+        assertParseSuccess(parser, " d/Monday", new ListLessonsCommand(DayOfWeek.MONDAY));
+        assertParseSuccess(parser, " d/tues", new ListLessonsCommand(DayOfWeek.TUESDAY));
     }
 
     @Test
@@ -39,9 +41,15 @@ public class ListLessonsCommandParserTest {
 
     @Test
     public void parse_invalidDay_throwsParseException() {
-        for (String args : new String[] {" d/monday", " d/tues", " d/x", " d/1", " d/mon extra"}) {
+        for (String args : new String[] {" d/funday", " d/mo", " d/x", " d/1"}) {
             assertParseFailure(parser, args, MESSAGE_INVALID_DAY);
         }
+    }
+
+    @Test
+    public void parse_validDayFollowedByText_throwsParseExceptionNamingText() {
+        assertParseFailure(parser, " d/mon extra",
+                String.format(ParserUtil.MESSAGE_UNEXPECTED_TEXT_AFTER_DAY, "mon", "extra"));
     }
 
     @Test

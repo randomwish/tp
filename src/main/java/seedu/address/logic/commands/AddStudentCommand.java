@@ -6,7 +6,10 @@ import static seedu.address.logic.parser.CliSyntax.PREFIX_GUARDIAN_PHONE;
 import static seedu.address.logic.parser.CliSyntax.PREFIX_NAME;
 import static seedu.address.logic.parser.CliSyntax.PREFIX_PHONE;
 
+import java.util.List;
+
 import seedu.address.commons.util.ToStringBuilder;
+import seedu.address.logic.Messages;
 import seedu.address.logic.commands.exceptions.CommandException;
 import seedu.address.model.Model;
 import seedu.address.model.student.Student;
@@ -18,7 +21,7 @@ public class AddStudentCommand extends Command {
 
     public static final String COMMAND_WORD = "addstudent";
 
-    public static final String MESSAGE_USAGE = COMMAND_WORD + ": Adds a student to the address book. "
+    public static final String MESSAGE_USAGE = COMMAND_WORD + ": Adds a student. "
             + "A student must have either their own phone number or a guardian with a phone number.\n"
             + "Parameters: "
             + PREFIX_NAME + "NAME "
@@ -26,9 +29,9 @@ public class AddStudentCommand extends Command {
             + "[" + PREFIX_GUARDIAN_NAME + "GUARDIAN_NAME "
             + PREFIX_GUARDIAN_PHONE + "GUARDIAN_PHONE]\n"
             + "Example: " + COMMAND_WORD + " "
-            + PREFIX_NAME + "Aiden Tan "
-            + PREFIX_GUARDIAN_NAME + "Tan Mei Ling "
-            + PREFIX_GUARDIAN_PHONE + "91234567";
+            + PREFIX_NAME + "Marcus Lim "
+            + PREFIX_GUARDIAN_NAME + "Lim Hui Min "
+            + PREFIX_GUARDIAN_PHONE + "98761234";
 
     public static final String MESSAGE_SUCCESS = "New student added: %1$s";
     public static final String MESSAGE_DUPLICATE_STUDENT = "This student already exists";
@@ -50,8 +53,14 @@ public class AddStudentCommand extends Command {
             throw new CommandException(MESSAGE_DUPLICATE_STUDENT);
         }
 
+        StudentPhoneConflictValidator.validate(toAdd, model.getAddressBook());
+
+        List<Student> sameNameStudents = model.getAddressBook().getStudentList().stream()
+                .filter(toAdd::hasSameName)
+                .toList();
         model.addStudent(toAdd);
-        return new CommandResult(String.format(MESSAGE_SUCCESS, toAdd));
+        return new CommandResult(String.format(MESSAGE_SUCCESS, toAdd)
+                + Messages.formatSameNameWarning(sameNameStudents));
     }
 
     @Override

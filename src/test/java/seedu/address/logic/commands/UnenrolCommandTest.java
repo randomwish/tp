@@ -11,6 +11,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import seedu.address.commons.core.index.Index;
 import seedu.address.logic.Messages;
 import seedu.address.logic.commands.exceptions.CommandException;
 import seedu.address.logic.parser.AddressBookParser;
@@ -30,6 +31,8 @@ public class UnenrolCommandTest {
             LocalTime.of(16, 0), LocalTime.of(18, 0));
     private final Lesson science = new Lesson("Science", DayOfWeek.MONDAY,
             LocalTime.of(16, 0), LocalTime.of(18, 0));
+    private final Lesson latePhysics = new Lesson("Late Physics", DayOfWeek.FRIDAY,
+            LocalTime.of(23, 0), LocalTime.of(1, 0));
 
     private void populate() {
         model.addStudent(beth);
@@ -93,13 +96,36 @@ public class UnenrolCommandTest {
     }
 
     @Test
+    public void execute_lessonEndsNextDay_marksNextDayInMessages() throws Exception {
+        model.addStudent(aiden);
+        model.addLesson(latePhysics);
+        model.enrolStudent(aiden, latePhysics);
+        assertEquals("Unenrolled Aiden Tan from Late Physics (Fri 2300-0100) (next day)",
+                parser.parseCommand("unenrol s/1 l/1").execute(model).getFeedbackToUser());
+        assertThrows(CommandException.class,
+                "Aiden Tan is not enrolled in Late Physics (Fri 2300-0100) (next day)", () ->
+                        parser.parseCommand("unenrol s/1 l/1").execute(model));
+    }
+
+    @Test
     public void equals_comparesBothIndices() throws Exception {
         var command = parser.parseCommand("unenrol s/1 l/2");
         assertEquals(command, command);
         assertEquals(command, parser.parseCommand("unenrol l/2 s/1"));
+        assertEquals(command.hashCode(), parser.parseCommand("unenrol l/2 s/1").hashCode());
         assertNotEquals(command, parser.parseCommand("unenrol s/2 l/2"));
         assertNotEquals(command, parser.parseCommand("unenrol s/1 l/1"));
         assertNotEquals(command, parser.parseCommand("enrol s/1 l/2"));
         assertNotEquals(command, null);
+    }
+
+    @Test
+    public void toStringMethod() {
+        Index studentIndex = Index.fromOneBased(1);
+        Index lessonIndex = Index.fromOneBased(2);
+        UnenrolCommand command = new UnenrolCommand(studentIndex, lessonIndex);
+        String expected = UnenrolCommand.class.getCanonicalName()
+                + "{studentIndex=" + studentIndex + ", lessonIndex=" + lessonIndex + "}";
+        assertEquals(expected, command.toString());
     }
 }

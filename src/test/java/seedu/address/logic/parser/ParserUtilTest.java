@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static seedu.address.logic.parser.ParserUtil.MESSAGE_INVALID_DAY;
 import static seedu.address.logic.parser.ParserUtil.MESSAGE_INVALID_INDEX;
 import static seedu.address.logic.parser.ParserUtil.MESSAGE_INVALID_TIME;
+import static seedu.address.logic.parser.ParserUtil.MESSAGE_UNEXPECTED_TEXT_AFTER_DAY;
+import static seedu.address.logic.parser.ParserUtil.MESSAGE_UNEXPECTED_TEXT_AFTER_TIME;
 import static seedu.address.testutil.Assert.assertThrows;
 import static seedu.address.testutil.TypicalIndexes.INDEX_FIRST_PERSON;
 
@@ -25,13 +27,13 @@ import seedu.address.model.tag.Tag;
 
 public class ParserUtilTest {
     private static final String INVALID_NAME = "R@chel";
-    private static final String INVALID_PHONE = "+651234";
+    private static final String INVALID_PHONE = "(65) 1234";
     private static final String INVALID_ADDRESS = " ";
     private static final String INVALID_EMAIL = "example.com";
     private static final String INVALID_TAG = "#friend";
 
     private static final String VALID_NAME = "Rachel Walker";
-    private static final String VALID_PHONE = "123456";
+    private static final String VALID_PHONE = "12345678";
     private static final String VALID_ADDRESS = "123 Main Street #0505";
     private static final String VALID_EMAIL = "rachel@example.com";
     private static final String VALID_TAG_1 = "friend";
@@ -76,10 +78,28 @@ public class ParserUtilTest {
     }
 
     @Test
+    public void parseName_longestAllowedName_returnsName() throws Exception {
+        String name = "A".repeat(ParserUtil.MAX_NAME_LENGTH);
+        assertEquals(new Name(name), ParserUtil.parseName(name));
+    }
+
+    @Test
+    public void parseName_tooLong_throwsParseException() {
+        String name = "A".repeat(ParserUtil.MAX_NAME_LENGTH + 1);
+        assertThrows(ParseException.class, ParserUtil.MESSAGE_NAME_TOO_LONG, () -> ParserUtil.parseName(name));
+    }
+
+    @Test
     public void parseName_validValueWithWhitespace_returnsTrimmedName() throws Exception {
         String nameWithWhitespace = WHITESPACE + VALID_NAME + WHITESPACE;
         Name expectedName = new Name(VALID_NAME);
         assertEquals(expectedName, ParserUtil.parseName(nameWithWhitespace));
+    }
+
+    @Test
+    public void parseName_validValueWithRepeatedSpaces_returnsCollapsedName() throws Exception {
+        Name expectedName = new Name(VALID_NAME);
+        assertEquals(expectedName, ParserUtil.parseName("Rachel   Walker"));
     }
 
     @Test
@@ -103,6 +123,37 @@ public class ParserUtilTest {
         String phoneWithWhitespace = WHITESPACE + VALID_PHONE + WHITESPACE;
         Phone expectedPhone = new Phone(VALID_PHONE);
         assertEquals(expectedPhone, ParserUtil.parsePhone(phoneWithWhitespace));
+    }
+
+    @Test
+    public void parsePhone_formattedValue_returnsNormalizedPhone() throws Exception {
+        assertEquals(new Phone("91234567"), ParserUtil.parsePhone("+65 9123-4567"));
+        assertEquals(new Phone("+447700900123"), ParserUtil.parsePhone("+44 7700-900123"));
+    }
+
+    @Test
+    public void parseStudentPhone_null_throwsNullPointerException() {
+        assertThrows(NullPointerException.class, () -> ParserUtil.parseStudentPhone(null));
+    }
+
+    @Test
+    public void parseStudentPhone_invalidValue_throwsParseException() {
+        assertThrows(ParseException.class, Phone.MESSAGE_STUDENT_PHONE_CONSTRAINTS, ()
+            -> ParserUtil.parseStudentPhone("6591234567"));
+    }
+
+    @Test
+    public void parseStudentPhone_manyFormattedGroups_throwsParseExceptionWithoutOverflow() {
+        String longPhone = "1 ".repeat(2_999) + "1";
+
+        assertThrows(ParseException.class, Phone.MESSAGE_STUDENT_PHONE_CONSTRAINTS, ()
+            -> ParserUtil.parseStudentPhone(longPhone));
+    }
+
+    @Test
+    public void parseStudentPhone_validValue_returnsNormalizedPhone() throws Exception {
+        assertEquals(new Phone("91234567"), ParserUtil.parseStudentPhone(" +65 9123-4567 "));
+        assertEquals(new Phone("+447700900123"), ParserUtil.parseStudentPhone("+44 7700-900123"));
     }
 
     @Test
@@ -240,27 +291,50 @@ public class ParserUtilTest {
     }
 
     @Test
-    public void parseDay_fullName_throwsParseException() {
-        // a day is set in one fixed way, its first three letters, so its full name is not accepted
-        List<String> fullNames = List.of("monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
-                "sunday", "Monday", "MONDAY");
-
-        for (String day : fullNames) {
-            assertThrows(ParseException.class, MESSAGE_INVALID_DAY, () -> ParserUtil.parseDay(day));
+    public void parseDay_fullName_returnsDay() throws Exception {
+        // users often type the full name, and blocking it adds nothing
+        assertEquals(DayOfWeek.MONDAY, ParserUtil.parseDay("monday"));
+        assertEquals(DayOfWeek.TUESDAY, ParserUtil.parseDay("tuesday"));
+        assertEquals(DayOfWeek.WEDNESDAY, ParserUtil.parseDay("wednesday"));
+        assertEquals(DayOfWeek.THURSDAY, ParserUtil.parseDay("thursday"));
+        assertEquals(DayOfWeek.FRIDAY, ParserUtil.parseDay("friday"));
+        assertEquals(DayOfWeek.SATURDAY, ParserUtil.parseDay("saturday"));
+        assertEquals(DayOfWeek.SUNDAY, ParserUtil.parseDay("sunday"));
+        for (String day : List.of("Monday", "MONDAY", "mOnDaY")) {
+            assertEquals(DayOfWeek.MONDAY, ParserUtil.parseDay(day));
         }
+    }
+
+    @Test
+    public void parseDay_weds_returnsWednesday() throws Exception {
+        // "weds" is as common as "tues" and "thurs", but is not the start of "wednesday"
+        assertEquals(DayOfWeek.WEDNESDAY, ParserUtil.parseDay("weds"));
+        assertEquals(DayOfWeek.WEDNESDAY, ParserUtil.parseDay("Weds"));
+        assertEquals(DayOfWeek.WEDNESDAY, ParserUtil.parseDay(" WEDS "));
+    }
+
+    @Test
+    public void parseDay_longerStartOfName_returnsDay() throws Exception {
+        // any start of the name with at least three letters, such as the common "tues" and "thurs"
+        assertEquals(DayOfWeek.MONDAY, ParserUtil.parseDay("mond"));
+        assertEquals(DayOfWeek.TUESDAY, ParserUtil.parseDay("tues"));
+        assertEquals(DayOfWeek.WEDNESDAY, ParserUtil.parseDay("wedn"));
+        assertEquals(DayOfWeek.THURSDAY, ParserUtil.parseDay("thur"));
+        assertEquals(DayOfWeek.THURSDAY, ParserUtil.parseDay("Thurs"));
+        assertEquals(DayOfWeek.FRIDAY, ParserUtil.parseDay("frida"));
+        assertEquals(DayOfWeek.SATURDAY, ParserUtil.parseDay("satur"));
+        assertEquals(DayOfWeek.SUNDAY, ParserUtil.parseDay("SUNDA"));
     }
 
     @Test
     public void parseDay_invalidValue_throwsParseException() {
         List<String> invalidDays = List.of(
-                // empty, too short or too long
-                "", WHITESPACE, "m", "mo", "mond", "mons",
-                // other common abbreviations; "tues" is the Developer Guide's example of an invalid day
-                "tues", "weds", "thur", "thurs",
+                // empty, too short, or not the start of a day's name
+                "", WHITESPACE, "m", "mo", "sa", "mons", "mondays", "monday1", "wends", "tuesdays",
                 // day numbers
                 "0", "1", "7",
-                // more than one day
-                "mon tue", "mon,tue", "mon-fri", "mon/tue",
+                // more than one day, without a space
+                "mon,tue", "mon-fri", "mon/tue",
                 // punctuation, or spaces inside a day
                 "mon.", "m o n",
                 // three characters that are not a day; the last is "Monday" in Chinese, written as escapes
@@ -271,6 +345,22 @@ public class ParserUtilTest {
         for (String day : invalidDays) {
             assertThrows(ParseException.class, MESSAGE_INVALID_DAY, () -> ParserUtil.parseDay(day));
         }
+    }
+
+    @Test
+    public void parseDay_validDayFollowedByText_throwsParseExceptionNamingText() {
+        assertThrows(ParseException.class, String.format(MESSAGE_UNEXPECTED_TEXT_AFTER_DAY, "mon", "xyz"), () ->
+                ParserUtil.parseDay("mon xyz"));
+        assertThrows(ParseException.class, String.format(MESSAGE_UNEXPECTED_TEXT_AFTER_DAY, "Monday", "tue"), () ->
+                ParserUtil.parseDay(WHITESPACE + "Monday\ttue" + WHITESPACE));
+        // a missing slash leaves the next prefix inside the day's value
+        assertThrows(ParseException.class, String.format(MESSAGE_UNEXPECTED_TEXT_AFTER_DAY, "mon", "st 1600"), () ->
+                ParserUtil.parseDay("mon st 1600"));
+    }
+
+    @Test
+    public void parseDay_invalidDayFollowedByText_throwsInvalidDay() {
+        assertThrows(ParseException.class, MESSAGE_INVALID_DAY, () -> ParserUtil.parseDay("xyz mon"));
     }
 
     @Test
@@ -292,6 +382,31 @@ public class ParserUtilTest {
         // leading zeros
         assertEquals(LocalTime.of(9, 5), ParserUtil.parseTime("0905"));
         assertEquals(LocalTime.of(12, 0), ParserUtil.parseTime("1200"));
+    }
+
+    @Test
+    public void parseTime_withColon_returnsTime() throws Exception {
+        // the lesson cards show times as HH:mm, so users may type them that way too
+        assertEquals(LocalTime.of(16, 0), ParserUtil.parseTime("16:00"));
+        assertEquals(LocalTime.of(0, 0), ParserUtil.parseTime("00:00"));
+        assertEquals(LocalTime.of(23, 59), ParserUtil.parseTime("23:59"));
+        assertEquals(LocalTime.of(9, 30), ParserUtil.parseTime("09:30"));
+
+        // with a colon, the hour can be a single digit
+        assertEquals(LocalTime.of(9, 30), ParserUtil.parseTime("9:30"));
+        assertEquals(LocalTime.of(0, 5), ParserUtil.parseTime("0:05"));
+        assertEquals(LocalTime.of(16, 0), ParserUtil.parseTime(WHITESPACE + "16:00" + WHITESPACE));
+    }
+
+    @Test
+    public void parseTime_invalidWithColon_throwsParseException() {
+        List<String> invalidTimes = List.of("24:00", "16:60", "29:00", "16:0", "16:000", "016:00", ":1600",
+                "1600:", "16:", ":00", "16::00", "16:00:00", "9:5", "-9:00", "+9:00", "16 :00", "16: 00",
+                "１６:００");
+
+        for (String time : invalidTimes) {
+            assertThrows(ParseException.class, MESSAGE_INVALID_TIME, () -> ParserUtil.parseTime(time));
+        }
     }
 
     @Test
@@ -317,12 +432,20 @@ public class ParserUtilTest {
     @Test
     public void parseTime_otherTimeFormats_throwsParseException() {
         // "4pm" is the Developer Guide's example of an invalid time
-        List<String> invalidTimes = List.of("4pm", "4:00pm", "0400pm", "16:00", "16.00", "16-00", "16 00",
+        List<String> invalidTimes = List.of("4pm", "4:00pm", "0400pm", "16.00", "16-00", "16 00",
                 "16h00", "1600h", "1600hrs", "noon", "abcd");
 
         for (String time : invalidTimes) {
             assertThrows(ParseException.class, MESSAGE_INVALID_TIME, () -> ParserUtil.parseTime(time));
         }
+    }
+
+    @Test
+    public void parseTime_validTimeFollowedByText_throwsParseExceptionNamingText() {
+        assertThrows(ParseException.class, String.format(MESSAGE_UNEXPECTED_TEXT_AFTER_TIME, "1600", "xyz"), () ->
+                ParserUtil.parseTime("1600 xyz"));
+        assertThrows(ParseException.class, String.format(MESSAGE_UNEXPECTED_TEXT_AFTER_TIME, "16:00", "1800"), () ->
+                ParserUtil.parseTime("16:00 1800"));
     }
 
     @Test

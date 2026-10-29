@@ -7,11 +7,12 @@ import static seedu.address.logic.parser.CliSyntax.PREFIX_NAME;
 import static seedu.address.logic.parser.CliSyntax.PREFIX_START_TIME;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import seedu.address.commons.core.LogsCenter;
 import seedu.address.commons.util.ToStringBuilder;
+import seedu.address.logic.Messages;
 import seedu.address.logic.commands.exceptions.CommandException;
 import seedu.address.model.Model;
 import seedu.address.model.lesson.Lesson;
@@ -29,7 +30,8 @@ public class AddLessonCommand extends Command {
             + PREFIX_DAY + "DAY "
             + PREFIX_START_TIME + "START_TIME "
             + PREFIX_END_TIME + "END_TIME\n"
-            + "DAY is one of mon, tue, wed, thu, fri, sat or sun. Times are four digits, e.g. 1600.\n"
+            + "DAY is a day's name or at least its first 3 letters, e.g. mon or monday.\n"
+            + "Times are in 24-hour format, e.g. 1600 or 16:00.\n"
             + "An end time earlier than the start time means the lesson ends on the next day.\n"
             + "Example: " + COMMAND_WORD + " "
             + PREFIX_NAME + "Sec 3 A-Math "
@@ -38,8 +40,6 @@ public class AddLessonCommand extends Command {
             + PREFIX_END_TIME + "1800";
 
     public static final String MESSAGE_SUCCESS = "New lesson added: %1$s";
-    public static final String MESSAGE_DUPLICATE_LESSON = "This lesson already exists";
-    public static final String MESSAGE_CLASH_WARNING = "Warning: clashes with %1$s";
 
     private static final Logger logger = LogsCenter.getLogger(AddLessonCommand.class);
 
@@ -56,28 +56,19 @@ public class AddLessonCommand extends Command {
     public CommandResult execute(Model model) throws CommandException {
         requireNonNull(model);
 
-        if (model.hasLesson(toAdd)) {
+        Optional<Lesson> existingLesson = model.getAddressBook().findDuplicateOf(toAdd);
+        if (existingLesson.isPresent()) {
             logger.fine("Rejected duplicate lesson: " + toAdd);
-            throw new CommandException(MESSAGE_DUPLICATE_LESSON);
+            throw new CommandException(Messages.formatDuplicateLesson(existingLesson.get(),
+                    model.getFilteredLessonList().contains(existingLesson.get())));
         }
 
         List<Lesson> clashingLessons = model.getAddressBook().getClashingLessons(toAdd);
         model.addLesson(toAdd);
         assert model.getFilteredLessonList().contains(toAdd) : "Adding a lesson should clear the lesson filter";
         logger.info("Added lesson: " + toAdd);
-        return new CommandResult(String.format(MESSAGE_SUCCESS, toAdd) + getClashWarning(clashingLessons));
-    }
-
-    /**
-     * Returns a warning on a new line naming {@code clashingLessons}, or an empty string if there are none.
-     * Clashes are allowed, as the tutor may teach overlapping lessons on purpose.
-     */
-    private static String getClashWarning(List<Lesson> clashingLessons) {
-        if (clashingLessons.isEmpty()) {
-            return "";
-        }
-        String clashes = clashingLessons.stream().map(Lesson::toString).collect(Collectors.joining("; "));
-        return "\n" + String.format(MESSAGE_CLASH_WARNING, clashes);
+        return new CommandResult(String.format(MESSAGE_SUCCESS, Messages.format(toAdd))
+                + Messages.formatLongLessonWarning(toAdd) + Messages.formatClashWarning(clashingLessons));
     }
 
     @Override

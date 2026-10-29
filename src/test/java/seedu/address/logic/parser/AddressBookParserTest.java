@@ -71,8 +71,17 @@ public class AddressBookParserTest {
 
     @Test
     public void parseCommand_clear() throws Exception {
-        assertTrue(parser.parseCommand(ClearCommand.COMMAND_WORD) instanceof ClearCommand);
-        assertTrue(parser.parseCommand(ClearCommand.COMMAND_WORD + " 3") instanceof ClearCommand);
+        assertEquals(new ClearCommand(), parser.parseCommand(ClearCommand.COMMAND_WORD));
+        assertEquals(ClearCommand.confirmed(),
+                parser.parseCommand(ClearCommand.COMMAND_WORD + " " + ClearCommand.CONFIRMATION_WORD));
+        assertEquals(new ClearCommand(), parser.parseCommand(ClearCommand.COMMAND_WORD + "  "));
+    }
+
+    @Test
+    public void parseCommand_clearWithOtherArguments_throwsParseException() {
+        assertThrows(ParseException.class,
+                String.format(MESSAGE_INVALID_COMMAND_FORMAT, ClearCommand.MESSAGE_USAGE), () ->
+                        parser.parseCommand(ClearCommand.COMMAND_WORD + " 3"));
     }
 
     @Test
@@ -168,6 +177,17 @@ public class AddressBookParserTest {
     }
 
     @Test
+    public void parseCommand_pastedUnicodeSpaces_readAsSpaces() throws Exception {
+        // text copied from a PDF, a web page or a caller ID may carry no-break or zero-width spaces
+        assertEquals(new ListStudentsCommand(), parser.parseCommand("liststudents\u00A0"));
+        assertEquals(new ListStudentsCommand(), parser.parseCommand("\uFEFFliststudents"));
+        assertEquals(new ListStudentsCommand(), parser.parseCommand("list\u200Bstudents"));
+        assertEquals(new FindStudentCommand(new StudentContainsKeywordsPredicate(List.of(), List.of(),
+                List.of("6591234567"))), parser.parseCommand("findstudent\u00A0p/+65\u00A09123\u202F4567"));
+        assertEquals(new ListLessonsCommand(DayOfWeek.MONDAY), parser.parseCommand("listlessons\u3000d/mon"));
+    }
+
+    @Test
     public void parseCommand_findStudentWithoutKeywords_throwsParseException() {
         assertThrows(ParseException.class,
                 String.format(MESSAGE_INVALID_COMMAND_FORMAT, FindStudentCommand.MESSAGE_USAGE), () ->
@@ -201,7 +221,7 @@ public class AddressBookParserTest {
     @Test
     public void parseCommand_listLessonsInvalidDay_throwsParseException() {
         assertThrows(ParseException.class, ParserUtil.MESSAGE_INVALID_DAY, () ->
-                parser.parseCommand(ListLessonsCommand.COMMAND_WORD + " d/monday"));
+                parser.parseCommand(ListLessonsCommand.COMMAND_WORD + " d/funday"));
     }
 
     @Test

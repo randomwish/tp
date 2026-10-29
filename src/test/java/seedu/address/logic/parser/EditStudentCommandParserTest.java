@@ -40,7 +40,24 @@ public class EditStudentCommandParserTest {
         assertParseFailure(parser, "-1 n/Aiden Tan", MESSAGE_INVALID_FORMAT);
         assertParseFailure(parser, "0 n/Aiden Tan", MESSAGE_INVALID_FORMAT);
         assertParseFailure(parser, "1 extra n/Aiden Tan", MESSAGE_INVALID_FORMAT);
-        assertParseFailure(parser, "1 x/value n/Aiden Tan", MESSAGE_INVALID_FORMAT);
+    }
+
+    @Test
+    public void parse_unknownPrefix_throwsParseException() {
+        // the error names the prefix instead of reporting a bad index or a bad name
+        assertParseFailure(parser, "1 x/value n/Aiden Tan", unknownPrefix("x/"));
+        assertParseFailure(parser, "1 x/abc", unknownPrefix("x/"));
+        assertParseFailure(parser, "1 n/Aiden x/abc", unknownPrefix("x/"));
+        assertParseFailure(parser, "1 N/Aiden", unknownPrefix("N/"));
+        assertParseFailure(parser, "1 p/92345678 l/1", unknownPrefix("l/"));
+    }
+
+    @Test
+    public void parse_nameConnector_returnsEditStudentCommand() {
+        EditStudentDescriptor descriptor = createDescriptor(new Name("Kumar s/o Ravi"), null, null);
+
+        assertParseSuccess(parser, "1 n/Kumar s/o Ravi", new EditStudentCommand(
+                Index.fromOneBased(1), descriptor));
     }
 
     @Test
@@ -50,6 +67,10 @@ public class EditStudentCommandParserTest {
         assertParseFailure(parser, "1 gp/91234567",
                 EditStudentCommandParser.MESSAGE_INCOMPLETE_GUARDIAN);
         assertParseFailure(parser, "1 p/92345678 gn/Tan Mei Ling",
+                EditStudentCommandParser.MESSAGE_INCOMPLETE_GUARDIAN);
+        assertParseFailure(parser, "1 gn/Tan Mei Ling gp/",
+                EditStudentCommandParser.MESSAGE_INCOMPLETE_GUARDIAN);
+        assertParseFailure(parser, "1 gn/ gp/91234567",
                 EditStudentCommandParser.MESSAGE_INCOMPLETE_GUARDIAN);
     }
 
@@ -68,9 +89,9 @@ public class EditStudentCommandParserTest {
     @Test
     public void parse_invalidValues_throwsParseException() {
         assertParseFailure(parser, "1 n/Aiden!", Name.MESSAGE_CONSTRAINTS);
-        assertParseFailure(parser, "1 p/phone", Phone.MESSAGE_CONSTRAINTS);
+        assertParseFailure(parser, "1 p/phone", Phone.MESSAGE_STUDENT_PHONE_CONSTRAINTS);
         assertParseFailure(parser, "1 gn/Tan! gp/91234567", Name.MESSAGE_CONSTRAINTS);
-        assertParseFailure(parser, "1 gn/Tan gp/phone", Phone.MESSAGE_CONSTRAINTS);
+        assertParseFailure(parser, "1 gn/Tan gp/phone", Phone.MESSAGE_STUDENT_PHONE_CONSTRAINTS);
     }
 
     @Test
@@ -83,6 +104,17 @@ public class EditStudentCommandParserTest {
 
         assertParseSuccess(parser,
                 "2 gp/91234567 p/92345678 n/Ryan Lim gn/Lim Mei Ling",
+                new EditStudentCommand(index, descriptor));
+    }
+
+    @Test
+    public void parse_formattedPhones_returnsEditStudentCommandWithNormalizedPhones() {
+        Index index = Index.fromOneBased(2);
+        Phone phone = new Phone("92345678");
+        Guardian guardian = new Guardian(new Name("Lim Mei Ling"), new Phone("91234567"));
+        EditStudentDescriptor descriptor = createDescriptor(null, phone, guardian);
+
+        assertParseSuccess(parser, "2 p/9234 5678 gn/Lim Mei Ling gp/+65 9123-4567",
                 new EditStudentCommand(index, descriptor));
     }
 
@@ -102,11 +134,51 @@ public class EditStudentCommandParserTest {
                 new EditStudentCommand(index, guardianDescriptor));
     }
 
+    @Test
+    public void parse_emptyContactValues_returnsClearContactCommand() {
+        Index index = Index.fromOneBased(1);
+
+        EditStudentDescriptor phoneDescriptor = new EditStudentDescriptor();
+        phoneDescriptor.setPhone(null);
+        assertParseSuccess(parser, "1 p/    ", new EditStudentCommand(index, phoneDescriptor));
+
+        EditStudentDescriptor guardianDescriptor = new EditStudentDescriptor();
+        guardianDescriptor.setGuardian(null);
+        assertParseSuccess(parser, "1 gn/     gp/    ", new EditStudentCommand(index, guardianDescriptor));
+
+        EditStudentDescriptor allContactsDescriptor = new EditStudentDescriptor();
+        allContactsDescriptor.setPhone(null);
+        allContactsDescriptor.setGuardian(null);
+        assertParseSuccess(parser, "1 p/    gn/    gp/    ",
+                new EditStudentCommand(index, allContactsDescriptor));
+    }
+
+    @Test
+    public void parse_realNameCharacters_returnsEditStudentCommand() {
+        Index index = Index.fromOneBased(1);
+        Guardian guardian = new Guardian(new Name("O'Connor"), new Phone("91234567"));
+        EditStudentDescriptor descriptor = createDescriptor(new Name("José Anne-Marie"), null, guardian);
+
+        assertParseSuccess(parser, "1 n/José Anne-Marie gn/O'Connor gp/91234567",
+                new EditStudentCommand(index, descriptor));
+    }
+
     private static EditStudentDescriptor createDescriptor(Name name, Phone phone, Guardian guardian) {
         EditStudentDescriptor descriptor = new EditStudentDescriptor();
-        descriptor.setName(name);
-        descriptor.setPhone(phone);
-        descriptor.setGuardian(guardian);
+        if (name != null) {
+            descriptor.setName(name);
+        }
+        if (phone != null) {
+            descriptor.setPhone(phone);
+        }
+        if (guardian != null) {
+            descriptor.setGuardian(guardian);
+        }
         return descriptor;
+    }
+
+    private static String unknownPrefix(String prefix) {
+        return Messages.getErrorMessageForUnknownPrefix(EditStudentCommand.COMMAND_WORD, prefix,
+                PREFIX_NAME, PREFIX_PHONE, PREFIX_GUARDIAN_NAME, PREFIX_GUARDIAN_PHONE);
     }
 }

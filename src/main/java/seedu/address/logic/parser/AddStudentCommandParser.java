@@ -30,6 +30,8 @@ public class AddStudentCommandParser implements Parser<AddStudentCommand> {
      * @throws ParseException if the user input does not conform to the expected format
      */
     public AddStudentCommand parse(String args) throws ParseException {
+        ArgumentTokenizer.verifyNoUnknownPrefixes(args, AddStudentCommand.COMMAND_WORD,
+                PREFIX_NAME, PREFIX_PHONE, PREFIX_GUARDIAN_NAME, PREFIX_GUARDIAN_PHONE);
         ArgumentMultimap argMultimap = ArgumentTokenizer.tokenize(
                 args, PREFIX_NAME, PREFIX_PHONE, PREFIX_GUARDIAN_NAME, PREFIX_GUARDIAN_PHONE);
 
@@ -52,7 +54,7 @@ public class AddStudentCommandParser implements Parser<AddStudentCommand> {
         }
 
         Name name = ParserUtil.parseName(argMultimap.getValue(PREFIX_NAME).orElseThrow());
-        Phone phone = phoneValue.isPresent() ? ParserUtil.parsePhone(phoneValue.get()) : null;
+        Phone phone = phoneValue.isPresent() ? ParserUtil.parseStudentPhone(phoneValue.get()) : null;
         Guardian guardian = parseGuardian(guardianNameValue, guardianPhoneValue);
 
         return new AddStudentCommand(new Student(name, phone, guardian));
@@ -64,7 +66,7 @@ public class AddStudentCommandParser implements Parser<AddStudentCommand> {
             return null;
         }
         Name name = ParserUtil.parseName(nameValue.get());
-        Phone phone = ParserUtil.parsePhone(phoneValue.orElseThrow());
+        Phone phone = ParserUtil.parseStudentPhone(phoneValue.orElseThrow());
         return new Guardian(name, phone);
     }
 }

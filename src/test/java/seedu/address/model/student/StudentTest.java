@@ -28,6 +28,16 @@ public class StudentTest {
     }
 
     @Test
+    public void hasSameName_normalizedNameWhateverThePhones() {
+        Student student = new Student(name, phone, null);
+
+        assertTrue(student.hasSameName(new Student(new Name("aiden  tan "), new Phone("88888888"), null)));
+        assertTrue(student.hasSameName(new Student(name, null, guardian)));
+        assertFalse(student.hasSameName(new Student(new Name("Aiden Lim"), phone, null)));
+        assertFalse(student.hasSameName(null));
+    }
+
+    @Test
     public void isSameStudent_normalizedNameAndSharedNumber() {
         Student ownContact = new Student(name, phone, null);
         Student sameOwnContact = new Student(new Name("aiden  tan "), phone, null);
@@ -40,8 +50,20 @@ public class StudentTest {
         assertTrue(guardianContact.isSameStudent(ownContact));
         assertTrue(guardianContact.isSameStudent(sameGuardianContact));
         assertFalse(ownContact.isSameStudent(new Student(name, new Phone("88888888"), null)));
+        assertFalse(guardianContact.isSameStudent(new Student(name, new Phone("88888888"), null)));
+        assertFalse(guardianContact.isSameStudent(new Student(name, new Phone("88888888"),
+                new Guardian(new Name("Other Guardian"), new Phone("99999999")))));
         assertFalse(ownContact.isSameStudent(new Student(new Name("Chloe Tan"), null, guardian)));
         assertFalse(ownContact.isSameStudent(null));
+    }
+
+    @Test
+    public void isSameStudent_canonicallyEquivalentUnicodeNameAndSharedNumber_returnsTrue() {
+        Student precomposedName = new Student(new Name("José Tan"), phone, null);
+        Student decomposedName = new Student(new Name("Jose\u0301 Tan"), phone, null);
+
+        assertTrue(precomposedName.isSameStudent(decomposedName));
+        assertTrue(decomposedName.isSameStudent(precomposedName));
     }
 
     @Test

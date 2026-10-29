@@ -9,6 +9,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import seedu.address.logic.Messages;
 import seedu.address.logic.commands.exceptions.CommandException;
 import seedu.address.model.Model;
 import seedu.address.model.ModelManager;
@@ -38,14 +39,121 @@ public class AddStudentCommandTest {
     }
 
     @Test
+    public void execute_realNameCharacters_addSuccessful() throws Exception {
+        Model model = new ModelManager();
+        Student student = new Student(new Name("José Anne-Marie"), null,
+                new Guardian(new Name("Kumar s/o Ravi"), new Phone("91234567")));
+
+        CommandResult result = new AddStudentCommand(student).execute(model);
+
+        assertEquals(String.format(AddStudentCommand.MESSAGE_SUCCESS, student), result.getFeedbackToUser());
+        assertEquals(List.of(student), model.getAddressBook().getStudentList());
+    }
+
+    @Test
+    public void execute_sameNameDifferentPhone_addSuccessfulWithWarning() throws Exception {
+        Model model = new ModelManager();
+        model.addStudent(AIDEN);
+        model.addStudent(RYAN);
+        Student sameName = new Student(new Name("aiden  tan"), new Phone("88888888"), null);
+
+        CommandResult result = new AddStudentCommand(sameName).execute(model);
+
+        assertEquals(String.format(AddStudentCommand.MESSAGE_SUCCESS, sameName)
+                + "\n" + String.format(Messages.MESSAGE_SAME_NAME_WARNING, Messages.format(AIDEN)),
+                result.getFeedbackToUser());
+        assertEquals(List.of(AIDEN, RYAN, sameName), model.getAddressBook().getStudentList());
+    }
+
+    @Test
     public void execute_duplicateStudent_throwsCommandException() {
         Model model = new ModelManager();
         model.addStudent(AIDEN);
-        Student duplicate = new Student(new Name("aiden  tan"), new Phone("91234567"), null);
+        Student duplicate = new Student(new Name("aiden  tan"), new Phone("9123-4567"), null);
 
         assertThrows(CommandException.class, AddStudentCommand.MESSAGE_DUPLICATE_STUDENT, () ->
                 new AddStudentCommand(duplicate).execute(model));
         assertEquals(List.of(AIDEN), model.getAddressBook().getStudentList());
+    }
+
+    @Test
+    public void execute_sameLocalDigitsWithCountryCode_throwsCommandException() {
+        Model model = new ModelManager();
+        model.addStudent(AIDEN);
+        Student duplicate = new Student(new Name("Aiden Tan"), new Phone("+65 9123-4567"), null);
+
+        assertThrows(CommandException.class, AddStudentCommand.MESSAGE_DUPLICATE_STUDENT, () ->
+                new AddStudentCommand(duplicate).execute(model));
+        assertEquals(List.of(AIDEN), model.getAddressBook().getStudentList());
+    }
+
+    @Test
+    public void execute_canonicallyEquivalentUnicodeName_throwsCommandException() {
+        Model model = new ModelManager();
+        Student existing = new Student(new Name("José Tan"), new Phone("91234567"), null);
+        model.addStudent(existing);
+        Student duplicate = new Student(new Name("Jose\u0301 Tan"), new Phone("91234567"), null);
+
+        assertThrows(CommandException.class, AddStudentCommand.MESSAGE_DUPLICATE_STUDENT, () ->
+                new AddStudentCommand(duplicate).execute(model));
+        assertEquals(List.of(existing), model.getAddressBook().getStudentList());
+    }
+
+    @Test
+    public void execute_sameStudentAndGuardianPhone_throwsCommandException() {
+        Model model = new ModelManager();
+        Student student = new Student(new Name("Chloe Tan"), new Phone("+65 9123-4567"),
+                new Guardian(new Name("Tan Mei Ling"), new Phone("91234567")));
+        String expectedMessage = StudentPhoneConflictValidator.MESSAGE_SAME_STUDENT_GUARDIAN_PHONE;
+
+        assertThrows(CommandException.class, expectedMessage, () -> new AddStudentCommand(student).execute(model));
+        assertTrue(model.getAddressBook().getStudentList().isEmpty());
+    }
+
+    @Test
+    public void execute_studentPhoneUsedByAnotherStudent_throwsCommandException() {
+        Model model = new ModelManager();
+        model.addStudent(RYAN);
+        Student student = new Student(new Name("Chloe Tan"), new Phone("+65 9321-0283"), null);
+        String expectedMessage = StudentPhoneConflictValidator.MESSAGE_PHONE_USED_BY_STUDENT;
+
+        assertThrows(CommandException.class, expectedMessage, () -> new AddStudentCommand(student).execute(model));
+        assertEquals(List.of(RYAN), model.getAddressBook().getStudentList());
+    }
+
+    @Test
+    public void execute_studentPhoneUsedByGuardian_throwsCommandException() {
+        Model model = new ModelManager();
+        model.addStudent(AIDEN);
+        Student student = new Student(new Name("Chloe Tan"), new Phone("91234567"), null);
+        String expectedMessage = StudentPhoneConflictValidator.MESSAGE_PHONE_USED_BY_GUARDIAN;
+
+        assertThrows(CommandException.class, expectedMessage, () -> new AddStudentCommand(student).execute(model));
+        assertEquals(List.of(AIDEN), model.getAddressBook().getStudentList());
+    }
+
+    @Test
+    public void execute_guardianPhoneUsedByStudent_throwsCommandException() {
+        Model model = new ModelManager();
+        model.addStudent(RYAN);
+        Student student = new Student(new Name("Chloe Tan"), null,
+                new Guardian(new Name("Tan Mei Ling"), new Phone("93210283")));
+        String expectedMessage = StudentPhoneConflictValidator.MESSAGE_PHONE_USED_BY_STUDENT;
+
+        assertThrows(CommandException.class, expectedMessage, () -> new AddStudentCommand(student).execute(model));
+        assertEquals(List.of(RYAN), model.getAddressBook().getStudentList());
+    }
+
+    @Test
+    public void execute_guardianPhoneUsedByGuardian_addSuccessful() throws Exception {
+        Model model = new ModelManager();
+        model.addStudent(AIDEN);
+        Student sibling = new Student(new Name("Chloe Tan"), null,
+                new Guardian(new Name("Tan Mei Ling"), new Phone("+65 9123-4567")));
+
+        new AddStudentCommand(sibling).execute(model);
+
+        assertEquals(List.of(AIDEN, sibling), model.getAddressBook().getStudentList());
     }
 
     @Test

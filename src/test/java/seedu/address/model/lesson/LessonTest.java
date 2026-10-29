@@ -16,8 +16,12 @@ public class LessonTest {
     public void constructor_validatesNameAndTimes() {
         Lesson lesson = lesson("Sec 3  A-Math", 16, 18);
         assertEquals("Sec 3 A-Math (Mon 1600-1800)", lesson.toString());
-        for (String name : new String[] {"", " ", "Math/Science", "-Math", "a".repeat(51)}) {
+        for (String name : new String[] {"", " ", "-Math", "(Math)", "a".repeat(51)}) {
             assertThrows(IllegalArgumentException.class, () -> lesson(name, 16, 18));
+        }
+        for (String name : new String[] {"Math/Science", "P5 Math: Fractions", "Group #1",
+            "Sec 3 A-Math @ Bishan", "Sec 3 A/E Math"}) {
+            assertEquals(name, lesson(name, 16, 18).getName());
         }
         assertThrows(IllegalArgumentException.class, () -> lesson("Math", 16, 16));
         // an end time earlier than the start time means the lesson ends on the next day
@@ -39,6 +43,39 @@ public class LessonTest {
         for (LocalTime invalid : new LocalTime[] {end.withSecond(1), end.withNano(1)}) {
             assertThrows(IllegalArgumentException.class, () -> new Lesson("Math", DayOfWeek.MONDAY, start, invalid));
         }
+    }
+
+    @Test
+    public void constructor_endSameAsStart_messageNamesOnlyThatProblem() {
+        // users type times as HHmm, so they cannot add seconds and should not be told about them
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> lesson("Math", 16, 16));
+        assertEquals("End time must not be the same as start time.", e.getMessage());
+        assertEquals(Lesson.MESSAGE_TIME_CONSTRAINTS, e.getMessage());
+    }
+
+    @Test
+    public void constructor_timeFinerThanMinute_messageNamesPrecision() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> new Lesson("Math",
+                DayOfWeek.MONDAY, LocalTime.of(16, 0, 1), LocalTime.of(18, 0)));
+        assertEquals(Lesson.MESSAGE_TIME_PRECISION, e.getMessage());
+    }
+
+    @Test
+    public void getDurationInMinutes_countsPastMidnight() {
+        assertEquals(120, lesson("Math", 16, 18).getDurationInMinutes());
+        assertEquals(180, lesson("Math", 22, 1).getDurationInMinutes());
+        assertEquals(24 * 60 - 1, new Lesson("Math", DayOfWeek.MONDAY, LocalTime.of(16, 1), LocalTime.of(16, 0))
+                .getDurationInMinutes());
+    }
+
+    @Test
+    public void endsNextDay_trueOnlyIfEndTimeIsBeforeStartTime() {
+        assertFalse(lesson("Math", 16, 18).endsNextDay());
+        assertTrue(lesson("Math", 22, 1).endsNextDay());
+        // times swapped by mistake are still read as a lesson past midnight
+        assertTrue(lesson("Math", 18, 16).endsNextDay());
+        assertTrue(new Lesson("Math", DayOfWeek.MONDAY, LocalTime.of(23, 59), LocalTime.MIDNIGHT).endsNextDay());
+        assertFalse(new Lesson("Math", DayOfWeek.MONDAY, LocalTime.MIDNIGHT, LocalTime.of(23, 59)).endsNextDay());
     }
 
     @Test

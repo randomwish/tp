@@ -20,9 +20,9 @@ import java.util.UUID;
 public final class Lesson {
     public static final String MESSAGE_NAME_CONSTRAINTS =
             "Lesson names must be 1 to 50 characters, start with a letter or digit, "
-            + "and contain only English letters, digits, spaces and - ' . , & ( ) +.";
-    public static final String MESSAGE_TIME_CONSTRAINTS =
-            "Times must have minute precision, and end time must not be the same as start time.";
+            + "and contain only English letters, digits, spaces and - : # @ ' . , & / ( ) +.";
+    public static final String MESSAGE_TIME_CONSTRAINTS = "End time must not be the same as start time.";
+    public static final String MESSAGE_TIME_PRECISION = "Times must be whole minutes, with no seconds.";
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HHmm");
     private static final int MINUTES_PER_DAY = 24 * 60;
     private static final int MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
@@ -42,10 +42,10 @@ public final class Lesson {
     public Lesson(UUID id, String name, DayOfWeek day, LocalTime startTime, LocalTime endTime) {
         requireAllNonNull(id, name, day, startTime, endTime);
         String normalizedName = name.trim().replaceAll(" +", " ");
-        checkArgument(normalizedName.matches("[A-Za-z0-9][A-Za-z0-9 '\\-.,&()+]{0,49}"), MESSAGE_NAME_CONSTRAINTS);
-        checkArgument(startTime.getSecond() == 0 && startTime.getNano() == 0
-                && endTime.getSecond() == 0 && endTime.getNano() == 0 && !endTime.equals(startTime),
-                MESSAGE_TIME_CONSTRAINTS);
+        checkArgument(normalizedName.matches("[A-Za-z0-9][A-Za-z0-9 :#@'.\\-.,&/()+]{0,49}"),
+                MESSAGE_NAME_CONSTRAINTS);
+        checkArgument(isWholeMinute(startTime) && isWholeMinute(endTime), MESSAGE_TIME_PRECISION);
+        checkArgument(!endTime.equals(startTime), MESSAGE_TIME_CONSTRAINTS);
         this.id = id;
         this.name = normalizedName;
         this.day = day;
@@ -73,6 +73,11 @@ public final class Lesson {
         return endTime;
     }
 
+    /** Returns true if this lesson runs past midnight and ends on the day after its day. */
+    public boolean endsNextDay() {
+        return endTime.isBefore(startTime);
+    }
+
     /** Duplicate check: same name ignoring case, day and times, regardless of ID. */
     public boolean isSameLesson(Lesson other) {
         return other != null && name.equalsIgnoreCase(other.name) && day == other.day
@@ -97,11 +102,15 @@ public final class Lesson {
         return (day.getValue() - 1) * MINUTES_PER_DAY + toMinuteOfDay(startTime);
     }
 
-    /** Includes the hours after midnight for a lesson that ends on the next day. */
-    private int getDurationInMinutes() {
+    /** Returns the length of the lesson, including the hours after midnight for a lesson that ends the next day. */
+    public int getDurationInMinutes() {
         int duration = Math.floorMod(toMinuteOfDay(endTime) - toMinuteOfDay(startTime), MINUTES_PER_DAY);
         assert duration > 0 : "The constructor rejects an end time equal to the start time";
         return duration;
+    }
+
+    private static boolean isWholeMinute(LocalTime time) {
+        return time.getSecond() == 0 && time.getNano() == 0;
     }
 
     private static int toMinuteOfDay(LocalTime time) {

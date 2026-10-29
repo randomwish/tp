@@ -8,6 +8,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import seedu.address.commons.core.LogsCenter;
+import seedu.address.commons.util.StringUtil;
 import seedu.address.logic.commands.AddLessonCommand;
 import seedu.address.logic.commands.AddStudentCommand;
 import seedu.address.logic.commands.ClearCommand;
@@ -44,7 +45,8 @@ public class AddressBookParser {
      * @throws ParseException if the user input does not conform to the expected format
      */
     public Command parseCommand(String userInput) throws ParseException {
-        final Matcher matcher = BASIC_COMMAND_FORMAT.matcher(userInput.trim());
+        // pasted text can carry spaces that look normal but are not, so read them as plain spaces first
+        final Matcher matcher = BASIC_COMMAND_FORMAT.matcher(StringUtil.normalizeSpaces(userInput).trim());
         if (!matcher.matches()) {
             throw new ParseException(String.format(MESSAGE_INVALID_COMMAND_FORMAT, HelpCommand.MESSAGE_USAGE));
         }
@@ -66,7 +68,16 @@ public class AddressBookParser {
             case AddLessonCommand.COMMAND_WORD -> new AddLessonCommandParser().parse(arguments);
             case DeleteLessonCommand.COMMAND_WORD -> new DeleteLessonCommandParser().parse(arguments);
             case EditLessonCommand.COMMAND_WORD -> new EditLessonCommandParser().parse(arguments);
-            case ClearCommand.COMMAND_WORD -> new ClearCommand();
+            case ClearCommand.COMMAND_WORD -> {
+                if (arguments.trim().equals(ClearCommand.CONFIRMATION_WORD)) {
+                    yield ClearCommand.confirmed();
+                }
+                if (!arguments.trim().isEmpty()) {
+                    throw new ParseException(String.format(
+                            MESSAGE_INVALID_COMMAND_FORMAT, ClearCommand.MESSAGE_USAGE));
+                }
+                yield new ClearCommand();
+            }
             case FindStudentCommand.COMMAND_WORD -> new FindStudentCommandParser().parse(arguments);
             case ListLessonsCommand.COMMAND_WORD -> new ListLessonsCommandParser().parse(arguments);
             case ListStudentsCommand.COMMAND_WORD -> new ListStudentsCommandParser().parse(arguments);

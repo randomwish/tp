@@ -30,7 +30,24 @@ public class AddStudentCommandParserTest {
         assertParseFailure(parser, "", MESSAGE_INVALID_FORMAT);
         assertParseFailure(parser, " p/93210283", MESSAGE_INVALID_FORMAT);
         assertParseFailure(parser, " Aiden n/Tan p/93210283", MESSAGE_INVALID_FORMAT);
-        assertParseFailure(parser, " N/Aiden p/93210283", MESSAGE_INVALID_FORMAT);
+    }
+
+    @Test
+    public void parse_unknownPrefix_throwsParseException() {
+        // prefixes are case-sensitive, so the error names the prefix that was not recognised
+        assertParseFailure(parser, " N/Aiden p/93210283", unknownPrefix("N/"));
+        assertParseFailure(parser, " n/Aiden p/93210283 x/abc", unknownPrefix("x/"));
+        // l/ and s/ belong to other commands, so a tutor may type them here by mistake
+        assertParseFailure(parser, " n/Aiden p/93210283 l/1", unknownPrefix("l/"));
+        assertParseFailure(parser, " n/Aiden s/1 p/93210283", unknownPrefix("s/"));
+    }
+
+    @Test
+    public void parse_nameConnectors_returnsAddStudentCommand() {
+        Student student = new Student(new Name("Kumar s/o Ravi"), new Phone("93210283"),
+                new Guardian(new Name("Siti d/o Ahmad"), new Phone("91234567")));
+
+        assertParsedStudent(" n/Kumar s/o Ravi p/93210283 gn/Siti d/o Ahmad gp/91234567", student);
     }
 
     @Test
@@ -65,9 +82,9 @@ public class AddStudentCommandParserTest {
     @Test
     public void parse_invalidValues_throwsParseException() {
         assertParseFailure(parser, " n/Aiden! p/93210283", Name.MESSAGE_CONSTRAINTS);
-        assertParseFailure(parser, " n/Aiden p/phone", Phone.MESSAGE_CONSTRAINTS);
+        assertParseFailure(parser, " n/Aiden p/phone", Phone.MESSAGE_STUDENT_PHONE_CONSTRAINTS);
         assertParseFailure(parser, " n/Aiden gn/Tan! gp/91234567", Name.MESSAGE_CONSTRAINTS);
-        assertParseFailure(parser, " n/Aiden gn/Tan gp/phone", Phone.MESSAGE_CONSTRAINTS);
+        assertParseFailure(parser, " n/Aiden gn/Tan gp/phone", Phone.MESSAGE_STUDENT_PHONE_CONSTRAINTS);
     }
 
     @Test
@@ -92,6 +109,23 @@ public class AddStudentCommandParserTest {
         assertParsedStudent(" gp/91234567 p/92345678 n/Aiden Tan gn/Tan Mei Ling",
                 student);
     }
+
+    @Test
+    public void parse_realNameCharacters_returnsAddStudentCommand() {
+        Guardian guardian = new Guardian(new Name("O’Connor"), new Phone("91234567"));
+        Student student = new Student(new Name("José Anne-Marie"), new Phone("92345678"), guardian);
+
+        assertParsedStudent(" n/José Anne-Marie p/92345678 gn/O’Connor gp/91234567", student);
+    }
+
+    @Test
+    public void parse_formattedPhones_returnsAddStudentCommandWithNormalizedPhones() {
+        Guardian guardian = new Guardian(new Name("Tan Mei Ling"), new Phone("91234567"));
+        Student student = new Student(new Name("Aiden Tan"), new Phone("92345678"), guardian);
+
+        assertParsedStudent(" n/Aiden Tan p/9234 5678 gn/Tan Mei Ling gp/+65 9123-4567", student);
+    }
+
     private void assertParsedStudent(String input, Student expected) {
         try {
             ModelManager model = new ModelManager();
@@ -103,4 +137,8 @@ public class AddStudentCommandParserTest {
         }
     }
 
+    private static String unknownPrefix(String prefix) {
+        return Messages.getErrorMessageForUnknownPrefix(AddStudentCommand.COMMAND_WORD, prefix,
+                PREFIX_NAME, PREFIX_PHONE, PREFIX_GUARDIAN_NAME, PREFIX_GUARDIAN_PHONE);
+    }
 }

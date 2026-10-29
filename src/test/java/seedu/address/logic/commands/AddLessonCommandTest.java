@@ -11,12 +11,11 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import seedu.address.logic.Messages;
 import seedu.address.logic.commands.exceptions.CommandException;
 import seedu.address.model.AddressBook;
 import seedu.address.model.Model;
@@ -72,25 +71,25 @@ public class AddLessonCommandTest {
         expectedModel.addLesson(nightClass);
 
         assertCommandSuccess(new AddLessonCommand(nightClass), model,
-                "New lesson added: Night Class (Fri 2200-0100)", expectedModel);
+                "New lesson added: Night Class (Fri 2200-0100) (next day)", expectedModel);
     }
 
     @Test
-    public void execute_otherLessonsExist_addedAtEnd() {
+    public void execute_otherLessonsExist_displaysTimetableOrder() {
         model.addLesson(PHYSICS);
         expectedModel.addLesson(PHYSICS);
         expectedModel.addLesson(A_MATH);
 
         assertCommandSuccess(new AddLessonCommand(A_MATH), model, getSuccessMessage(A_MATH), expectedModel);
-        assertEquals(List.of(PHYSICS, A_MATH), model.getFilteredLessonList());
+        assertEquals(List.of(A_MATH, PHYSICS), model.getFilteredLessonList());
     }
 
     @Test
     public void execute_sameLesson_throwsCommandException() {
         model.addLesson(A_MATH);
 
-        // the full message is spelled out once to pin its exact wording
-        assertAddFailure(new AddLessonCommand(A_MATH), "This lesson already exists");
+        // the full message is spelled out once to pin its exact wording; it names the existing lesson
+        assertAddFailure(new AddLessonCommand(A_MATH), "This lesson already exists: Sec 3 A-Math (Mon 1600-1800)");
     }
 
     @Test
@@ -98,7 +97,7 @@ public class AddLessonCommandTest {
         model.addLesson(A_MATH);
         Lesson typedAgain = lesson("Sec 3 A-Math", DayOfWeek.MONDAY, "16:00", "18:00");
 
-        assertAddFailure(new AddLessonCommand(typedAgain), AddLessonCommand.MESSAGE_DUPLICATE_LESSON);
+        assertAddFailure(new AddLessonCommand(typedAgain), Messages.formatDuplicateLesson(A_MATH, true));
     }
 
     @Test
@@ -107,7 +106,7 @@ public class AddLessonCommandTest {
 
         for (String name : List.of("sec 3 a-math", "SEC 3 A-MATH", "  Sec   3  A-Math  ")) {
             Lesson duplicate = lesson(name, DayOfWeek.MONDAY, "16:00", "18:00");
-            assertAddFailure(new AddLessonCommand(duplicate), AddLessonCommand.MESSAGE_DUPLICATE_LESSON);
+            assertAddFailure(new AddLessonCommand(duplicate), Messages.formatDuplicateLesson(A_MATH, true));
         }
     }
 
@@ -117,8 +116,9 @@ public class AddLessonCommandTest {
         model.updateFilteredLessonList(lesson -> false);
         Lesson typedAgain = lesson("Sec 3 A-Math", DayOfWeek.MONDAY, "16:00", "18:00");
 
-        // a lesson the tutor cannot currently see is still a duplicate, and the filter is left alone
-        assertAddFailure(new AddLessonCommand(typedAgain), AddLessonCommand.MESSAGE_DUPLICATE_LESSON);
+        // a lesson the tutor cannot currently see is still a duplicate, the error says how to see it,
+        // and the filter is left alone
+        assertAddFailure(new AddLessonCommand(typedAgain), Messages.formatDuplicateLesson(A_MATH, false));
         assertTrue(model.getFilteredLessonList().isEmpty());
     }
 
@@ -127,7 +127,7 @@ public class AddLessonCommandTest {
         AddLessonCommand command = new AddLessonCommand(A_MATH);
         command.execute(model);
 
-        assertAddFailure(command, AddLessonCommand.MESSAGE_DUPLICATE_LESSON);
+        assertAddFailure(command, Messages.formatDuplicateLesson(A_MATH, true));
         assertEquals(List.of(A_MATH), model.getAddressBook().getLessonList());
     }
 
@@ -215,6 +215,21 @@ public class AddLessonCommandTest {
     }
 
     @Test
+    public void execute_clashWithLessonPastMidnight_warningMarksNextDay() {
+        Lesson nightClass = lesson("Night Class", DayOfWeek.FRIDAY, "22:00", "01:00");
+        model.addLesson(nightClass);
+        expectedModel.addLesson(nightClass);
+        Lesson earlyClass = lesson("Early Class", DayOfWeek.SATURDAY, "00:30", "02:00");
+        expectedModel.addLesson(earlyClass);
+
+        // the full message is spelled out once to pin that clashing lessons are marked as in other lesson results
+        assertCommandSuccess(new AddLessonCommand(earlyClass), model,
+                "New lesson added: Early Class (Sat 0030-0200)\n"
+                + "Warning: clashes with Night Class (Fri 2200-0100) (next day)",
+                expectedModel);
+    }
+
+    @Test
     public void execute_clashHiddenByLessonFilter_warningStillGiven() {
         model.addLesson(A_MATH);
         model.updateFilteredLessonList(lesson -> false);
@@ -233,7 +248,26 @@ public class AddLessonCommandTest {
         Lesson typedAgain = lesson("Sec 3 A-Math", DayOfWeek.MONDAY, "16:00", "18:00");
 
         // a duplicate is rejected rather than added with a warning
-        assertAddFailure(new AddLessonCommand(typedAgain), AddLessonCommand.MESSAGE_DUPLICATE_LESSON);
+        assertAddFailure(new AddLessonCommand(typedAgain), Messages.formatDuplicateLesson(A_MATH, true));
+    }
+
+    @Test
+    public void execute_overnightLessonOverTwelveHours_addsAndWarns() throws Exception {
+        // swapped times are read as a lesson past midnight, so a very long one is probably a mistake
+        Lesson swapped = lesson("Sec 3 A-Math", DayOfWeek.MONDAY, "18:00", "16:00");
+
+        assertEquals("New lesson added: Sec 3 A-Math (Mon 1800-1600) (next day)\n"
+                + "Warning: this lesson lasts 22 h and ends the next day. Check that the start and end times"
+                + " are not swapped.", new AddLessonCommand(swapped).execute(model).getFeedbackToUser());
+        assertEquals(List.of(swapped), model.getAddressBook().getLessonList());
+    }
+
+    @Test
+    public void execute_shortOvernightLesson_noLengthWarning() throws Exception {
+        Lesson lateClass = lesson("Night Class", DayOfWeek.FRIDAY, "22:00", "01:00");
+
+        assertEquals("New lesson added: Night Class (Fri 2200-0100) (next day)",
+                new AddLessonCommand(lateClass).execute(model).getFeedbackToUser());
     }
 
     @Test
@@ -246,7 +280,7 @@ public class AddLessonCommandTest {
 
         // otherwise a lesson on a hidden day would seem not to have been added
         assertCommandSuccess(new AddLessonCommand(A_MATH), model, getSuccessMessage(A_MATH), expectedModel);
-        assertEquals(List.of(PHYSICS, A_MATH), model.getFilteredLessonList());
+        assertEquals(List.of(A_MATH, PHYSICS), model.getFilteredLessonList());
     }
 
     @Test
@@ -382,12 +416,8 @@ public class AddLessonCommandTest {
     }
 
     private static String getSuccessMessage(Lesson addedLesson, Lesson... clashingLessons) {
-        String message = String.format(AddLessonCommand.MESSAGE_SUCCESS, addedLesson);
-        if (clashingLessons.length == 0) {
-            return message;
-        }
-        return message + "\n" + String.format(AddLessonCommand.MESSAGE_CLASH_WARNING,
-                Stream.of(clashingLessons).map(Lesson::toString).collect(Collectors.joining("; ")));
+        return String.format(AddLessonCommand.MESSAGE_SUCCESS, Messages.format(addedLesson))
+                + Messages.formatLongLessonWarning(addedLesson) + Messages.formatClashWarning(List.of(clashingLessons));
     }
 
     /** Creates a lesson with a newly generated ID; times are given as {@code HH:mm}. */
