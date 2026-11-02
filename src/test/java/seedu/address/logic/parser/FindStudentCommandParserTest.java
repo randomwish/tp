@@ -158,6 +158,18 @@ public class FindStudentCommandParserTest {
                 new StudentContainsKeywordsPredicate(List.of("José", "Anne-Marie", "s/o"), List.of())));
         assertParseSuccess(parser, " gn/O'Neil", new FindStudentCommand(
                 new StudentContainsKeywordsPredicate(List.of(), List.of("O'Neil"))));
+        assertParseSuccess(parser, " n/Ng @ S.", new FindStudentCommand(
+                new StudentContainsKeywordsPredicate(List.of("Ng", "@", "S."), List.of())));
+        assertParseSuccess(parser, " gn/(Tan A Lian)", new FindStudentCommand(
+                new StudentContainsKeywordsPredicate(List.of(), List.of("(Tan", "A", "Lian)"))));
+    }
+
+    @Test
+    public void parse_keywordCutAtPunctuation_returnsFindStudentCommand() {
+        assertParseSuccess(parser, " n/o'", new FindStudentCommand(
+                new StudentContainsKeywordsPredicate(List.of("o'"), List.of())));
+        assertParseSuccess(parser, " gn/-marie", new FindStudentCommand(
+                new StudentContainsKeywordsPredicate(List.of(), List.of("-marie"))));
     }
 
     @Test

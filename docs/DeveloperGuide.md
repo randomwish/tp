@@ -12,6 +12,11 @@ title: Developer Guide
 * TutorReach is based on the [AddressBook-Level3](https://se-education.org/addressbook-level3/) project created by the [SE-EDU initiative](https://se-education.org).
 * Libraries used: [JavaFX](https://openjfx.io/), [Jackson](https://github.com/FasterXML/jackson), [JUnit5](https://github.com/junit-team/junit5)
 
+Notable uses of AI:
+
+* Claude Code and Codex were used to create test cases for alpha and beta testing.
+* Claude Code and Codex were used for general development.
+
 --------------------------------------------------------------------------------------------------------------------
 
 ## **Setting up, getting started**
@@ -166,6 +171,20 @@ This section describes some noteworthy details on how certain features are imple
 
 ### Saving and recovering tutor data
 
+#### Single-instance protection
+
+Before reading or saving preferences or tutor data, `MainApp.init()` calls
+`ApplicationLock.tryAcquire()` for `data/addressbook.json.lock`. The method opens a `FileChannel`
+and attempts a non-blocking exclusive lock. If another instance holds the lock, startup stops with a
+message asking the user to use the existing window. If the lock file cannot be accessed, startup also
+stops rather than proceeding without protection.
+
+The channel stays open for the lifetime of TutorReach and is closed in `MainApp.stop()`, after saving
+preferences. JVM termination also releases the lock. The lock file itself is deliberately retained:
+its existence does not mean TutorReach is running. The separate lock file is needed because saving
+atomically replaces the data file. This protects instances using the same lock file; it does not prevent
+external editors from modifying the data file while TutorReach is running.
+
 #### Saving after a command
 
 Commands change the model; they do not write files directly. `LogicManager.execute()` controls saving:
@@ -191,21 +210,28 @@ The [save sequence diagram source](diagrams/SaveAddressBookSequenceDiagram.puml)
 #### Loading and partial recovery
 
 `JsonAddressBookStorage.readAddressBook()` reads the original bytes and passes the JSON to
-`AddressBookRecovery`. The root must be one JSON object. Missing or null record lists are treated as empty;
+`AddressBookRecovery`. Jackson's `STRICT_DUPLICATE_DETECTION` rejects duplicate JSON field names
+anywhere in the file, including inside individual records. Such a file is rejected as a whole before
+record recovery begins; the original is preserved and saving is blocked. This differs from duplicate
+student or lesson records, which can be skipped individually.
+
+The root must be one JSON object. Missing or null record lists are treated as empty;
 a present, non-null list must be an array. Records are processed in the order `persons`, `students`,
 `lessons`, then `enrolments`, so enrolment references can be checked against the recovered records.
 
 Each record is validated independently through its JSON adapter and the model's duplicate checks.
 Invalid records, duplicates and enrolments referencing missing records are skipped. The first valid
-occurrence of a duplicate is retained. Skipped positions are recorded using one-based labels such as
-`students[2]`; the warning log includes these labels.
+occurrence of a duplicate is retained. Each skipped record is described by its type, one-based position
+within its list, name when available, and reason, such as `student 2 (Aiden Tan): invalid phone number`.
+The startup warning shows up to five skipped records and indicates how many more were skipped;
+the warning log includes the full list.
 
 | Load result | App behaviour | Protection of the original file |
 | --- | --- | --- |
 | File missing | Starts with sample data. | No file is written just by loading. |
 | Valid file | Loads the records. | No recovery backup is needed. |
 | Invalid individual records | Loads valid records and shows a skipped-record count and backup path. | Backs up the exact original bytes before returning recovered data. |
-| Malformed JSON, invalid list structure, read failure or backup failure | Starts empty with a warning. Read-only commands remain available. | Blocks saving to that normalized absolute path and rejects mutating commands before execution. |
+| Malformed JSON, duplicate JSON field names, invalid list structure, read failure or backup failure | Starts empty with a warning. Read-only commands remain available. | Blocks saving to that normalized absolute path and rejects mutating commands before execution. |
 
 Recovery backups are stored beside the source as `<filename>.recovery-<unique suffix>.bak`. They are
 not overwritten or automatically deleted, and another recovery can create another backup. Loading does
@@ -225,6 +251,15 @@ its phone number is reused in another contact role. New and edited records must 
 
 `JsonSerializableAddressBook.toModelType()` remains a strict conversion API; normal tutor-data loading
 uses `AddressBookRecovery` instead. Partial recovery applies to tutor data, not user preferences.
+
+#### User preferences
+
+`JsonUserPrefsStorage` reads `preferences.json` through `JsonUtil`. `MainApp.initPrefs()` uses default
+preferences when the file is missing or reading throws `DataLoadingException`, then attempts to save
+the initialized preferences. Preferences are saved again on shutdown. They use the same atomic-writing
+helper, but do not use `AddressBookRecovery`, recovery backups or the tutor-data blocked-save guard.
+Duplicate-key detection is enabled for tutor-data recovery only; it is not enabled on the shared
+`JsonUtil` mapper used to read preferences.
 
 
 ### Warning about clashing lessons
@@ -274,7 +309,7 @@ Because an end time earlier than the start time means a lesson past midnight, sw
 
 The `editstudent` and `editlesson` commands replace immutable domain objects without changing their stable UUIDs.
 
-1. The command parser reads a positive displayed-list index and one or more optional fields. It rejects repeated prefixes, missing edit fields and invalid values. For `editstudent`, a blank `p/` removes the student's phone, while blank `gn/ gp/` values remove the guardian. The guardian prefixes must be given together with either two values or two blanks because a guardian is replaced as one value.
+1. The command parser reads a positive displayed-list index and one or more optional fields. It rejects repeated prefixes, missing edit fields and invalid values. For `editstudent`, a blank `p/` removes the student's phone, while blank `gn/ gp/` values remove the guardian. If the student already has a guardian, `gn/` and `gp/` can be edited independently, and the omitted detail is kept. Adding a guardian requires both values, while supplying only one blank guardian field is rejected.
 1. The command resolves the index against the corresponding filtered list, so it edits the item the user can see rather than the same position in the complete list.
 1. The command creates a replacement object using the supplied values, `null` for an optional contact being removed, the target's values for unspecified fields and the target's UUID. The student model rejects a replacement with no contact number.
 1. If the replacement equals the target, the command throws a `CommandException` explaining that the incoming changes are identical and asking the user to change at least one field. It does not call `Model#setStudent()` or `Model#setLesson()`, so `LogicManager` does not save the address book.
@@ -402,14 +437,14 @@ Step 4. Otherwise, the command calls `Model#unenrolStudent()`, which removes the
 
 1. `AddressBookParser` first turns every Unicode space in the command, such as a no-break space pasted from a PDF or a messaging app, into a plain space, and drops zero-width characters (`StringUtil#normalizeSpaces()`).
 1. `FindStudentCommandParser` rejects a word that looks like a prefix but is not `n/`, `gn/` or `p/` (`ArgumentTokenizer#verifyNoUnknownPrefixes()`), so the error names it instead of blaming a valid value.
-1. It splits the `n/` and `gn/` values into keywords, each of which must be a valid name. It reads the `p/` value as one phone number: spaces, hyphens and a leading `+` are allowed, and only the digits are kept.
+1. It splits the `n/` and `gn/` values into keywords, each of which must be a valid name part, which may be cut at an apostrophe or hyphen, as in `o'`. It reads the `p/` value as one phone number: spaces, hyphens and a leading `+` are allowed, and only the digits are kept.
 1. `FindStudentCommand#execute()` passes the predicate to `Model#updateFilteredStudentList()`, which replaces any earlier search or lesson filter.
 
 The activity diagram below shows how the predicate decides whether a student matches. Name keywords may match any part of a name. Before comparing, the predicate puts both the name and the keyword in lower case, removes the accents of Latin letters (combining marks U+0300 to U+036F after Unicode decomposition) and makes curly apostrophes straight, so `jose` finds `José`. Marks of other scripts, such as Tamil vowel signs, are kept, because they are part of their letters.
 
 ![How findstudent decides whether a student matches](images/FindStudentActivityDiagram.png)
 
-A searched number also matches a stored number of at least seven digits that it ends with, if no more than three digits come before it. This finds a number copied with its country code, such as `+65 9123 4567`, while a short stored number, such as `567`, is only found as part of a longer search.
+A searched number also matches a stored number of at least seven digits if it is that number with `65` in front. This finds a number copied with the Singapore country code, such as `+65 9123 4567`, while a short stored number, such as `567`, is only found as part of a longer search, and `+852 9123 4567` does not find the local number `91234567`. An international number is stored with its country code, so it is found by the same digits.
 
 #### Design considerations:
 
@@ -425,17 +460,19 @@ A searched number also matches a stored number of at least seven digits that it 
 
 **Aspect: How to match a number with a country code:**
 
-* **Alternative 1 (current choice):** Match a stored number that the search ends with, if at most three digits come before it.
-  * Pros: Works for any country code without a list of codes.
-  * Cons: A full number from another country with the same last digits would also match, which is unlikely for numbers of seven or more digits.
+* **Alternative 1 (current choice):** Match a stored number only with the Singapore country code, `65`, in front.
+  * Pros: A caller from another country never finds a family with the same last digits.
+  * Cons: A legacy number saved without its foreign country code is not found when searched with that code, though its own digits still find it.
 
-* **Alternative 2:** Strip known country codes, such as `65`, before matching.
-  * Pros: Exact for the codes on the list.
-  * Cons: Needs a list of codes, and fails for codes not on it.
+* **Alternative 2:** Match a stored number that the search ends with, if at most three digits come before it.
+  * Pros: Works for any country code without a list of codes.
+  * Cons: A foreign caller ID such as `+852 9123 4567` finds the unrelated local number `91234567`.
 
 ### \[Proposed\] Undo/redo feature
 
 #### Proposed Implementation
+
+This feature and the APIs described below are not currently implemented.
 
 The proposed undo/redo mechanism is facilitated by `VersionedAddressBook`. It extends `AddressBook` with an undo/redo history, stored internally as a `addressBookStateList` and `currentStatePointer`. Additionally, it implements the following operations:
 
@@ -748,7 +785,7 @@ Priorities: High (must have) - `* * *`, Medium (nice to have) - `* *`, Low (unli
 
 * 1b. Tutor gives a phone number, or part of one, instead of, or as well as, names.
 
-  Use case resumes at step 2, with TutorReach matching students whose own or guardian's phone number contains it, ignoring spaces, hyphens and any country code in front of a full number.
+  Use case resumes at step 2, with TutorReach matching students whose own or guardian's phone number contains it, ignoring spaces, hyphens and the Singapore country code in front of a full number.
 
 * 1c. No keywords are given, or the phone number contains a character other than a digit, space, hyphen or leading `+`.
 
@@ -976,6 +1013,9 @@ testers are expected to do more *exploratory* testing.
    1. Test case: `addstudent n/Ryan Lim p/93210283`<br>
       Expected: A student with no guardian is added. The status message shows the added student's details.
 
+   1. Test case: `addstudent n/Ng Ah Kow @ Ng Kok Wee p/81000003`, followed by `addstudent n/S. Ramasamy p/81000004`, `addstudent n/Tan Wei Ming (David) p/81000005` and `addstudent n/Tan Ah Kow Jr. p/81000006`<br>
+      Expected: All four students are added. Their aliases, initials, parenthesized names and suffix punctuation are preserved in the displayed names.
+
    1. Test case: `addstudent n/Ryan Lim`<br>
       Expected: No student is added. The status message states that at least one phone number is required.
 
@@ -1047,8 +1087,8 @@ testers are expected to do more *exploratory* testing.
    1. Test case: `editstudent 1 p/ gn/ gp/`<br>
       Expected: No student is edited because the result would have no contact number. The status message states that at least one phone number is required.
 
-   1. Test case: `editstudent 1 gn/Lim Mei`<br>
-      Expected: No student is edited. The status message states that guardian name and guardian phone must be given together.
+   1. Test case: `editstudent 1 gn/Lim Hui`<br>
+      Expected: Only the first student's guardian name changes. The guardian phone and all other details remain unchanged.
 
    1. Other incorrect commands to try: `editstudent 1`, `editstudent 0 n/Aiden`, `editstudent 1 p/12`, `editstudent 1 n/Aiden n/Ryan`<br>
       Expected: No student is edited. The status message shows the relevant missing field, invalid index, invalid phone or duplicate-prefix error.
@@ -1283,6 +1323,13 @@ editing files, and retain a separate copy of the original data.
 1. Unrecoverable file: remove a closing `}` and restart. Expect an empty app and a warning that saving
    is disabled. `liststudents`, `help` and `exit` must work. An `addstudent` command must report an error
    without adding a student or changing the file. Restore the valid copy and restart to resume normal use.
+1. Duplicate JSON field names: in a disposable valid file, repeat the root `students` key with an
+   empty array as its second value. Restart and expect the same blocked-saving behaviour as an
+   unrecoverable file, with the original bytes unchanged. Repeat with a duplicated `name` key inside
+   one student record; the entire file must be rejected, not partially recovered.
+1. Single-instance protection: launch TutorReach twice from the same working directory. The second
+   instance must show the already-running message and exit without changing the data or preferences.
+   Close the first instance and launch again; startup must succeed even though the lock file remains.
 1. Save failure: with valid data loaded, make the destination unwritable using filesystem permissions
    supported by your OS, then try adding a student. Expect a save error, unchanged stored data and
    restoration of the previous displayed lists. Restore permissions before retrying.
