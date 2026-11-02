@@ -311,6 +311,8 @@ Because an end time earlier than the start time means a lesson past midnight, sw
 
 The `editstudent` and `editlesson` commands replace immutable domain objects without changing their stable UUIDs.
 
+Support for digits in student and guardian name fields is intentional. It accommodates tutor-defined class-level, cohort, or year identifiers, such as `John P5` or `Aiden 2026`. Validation remains restricted to the documented character set, and digit-containing identifiers remain searchable using `findstudent`.
+
 1. The command parser reads a positive displayed-list index and one or more optional fields. It rejects repeated prefixes, missing edit fields and invalid values. For `editstudent`, a blank `p/` removes the student's phone, while blank `gn/ gp/` values remove the guardian. If the student already has a guardian, `gn/` and `gp/` can be edited independently, and the omitted detail is kept. Adding a guardian requires both values, while supplying only one blank guardian field is rejected.
 1. The command resolves the index against the corresponding filtered list, so it edits the item the user can see rather than the same position in the complete list.
 1. The command creates a replacement object using the supplied values, `null` for an optional contact being removed, the target's values for unspecified fields and the target's UUID. The student model rejects a replacement with no contact number.
@@ -318,7 +320,7 @@ The `editstudent` and `editlesson` commands replace immutable domain objects wit
 1. Otherwise, the command rejects a replacement that would duplicate another student or lesson. For a student, it also validates the final phone roles against the complete student list before asking the model to replace the target in the source list.
 1. The filtered list re-evaluates its predicate when the source item is replaced. An edited item therefore remains visible only if it still matches the active filter.
 
-The following sequence diagram shows a successful edit that changes data: `editstudent 1 p/97654321`. The `editlesson` command follows the same sequence using its lesson-specific parser, command, filtered list and model operation, but without the student phone-conflict validation.
+The following sequence diagram shows a successful edit that changes data: `editstudent 1 p/97654321`. The `editlesson` command follows the same sequence using its lesson-specific parser, command, filtered list and model operation, but without the student phone-conflict validation. The diagram omits the subsequent persistence flow, which is covered by [Saving after a command](#saving-after-a-command) and its [save sequence diagram source](diagrams/SaveAddressBookSequenceDiagram.puml).
 
 ![Interactions for editing a student](images/EditStudentSequenceDiagram.png)
 
@@ -879,7 +881,7 @@ Priorities: High (must have) - `* * *`, Medium (nice to have) - `* *`, Low (unli
 
       Use case resumes at step 3.
 
-* 3b. Only one of the guardian's name and phone number is given.
+* 3b. The guardian details would be incomplete because the tutor supplies only one non-blank guardian field for a student without a guardian, or supplies exactly one blank guardian field.
 
     * 3b1. TutorReach shows an error message.
 
@@ -891,7 +893,7 @@ Priorities: High (must have) - `* * *`, Medium (nice to have) - `* *`, Low (unli
 
       Use case ends.
 
-* 3d. The final edited details would introduce a phone-number conflict.
+* 3d. The final edited details would contain a phone-number conflict.
 
     * 3d1. TutorReach shows an error message identifying the conflicting contact role.
 
@@ -948,10 +950,10 @@ Priorities: High (must have) - `* * *`, Medium (nice to have) - `* *`, Low (unli
 
 ### Non-Functional Requirements
 
-1.  Should work on any _mainstream OS_ as long as it has Java `25` or above installed.
-2.  A user with above average typing speed for regular English text (i.e. not code, not system admin commands) should be able to accomplish most of the tasks faster using commands than using the mouse.
+1.  Should run on Windows, macOS, and Linux when Java `25` or later is installed.
+2.  A tutor familiar with the documented command formats should be able to execute every supported command using only the keyboard after TutorReach starts.
 3.  Should work without an internet connection.
-4.  Should save the data after every command that changes it, so that no data is lost if the app is closed or the computer shuts down unexpectedly after that command.
+4.  Should save stored data before reporting successful completion of each command that changes it. If saving fails, TutorReach should report the failure and restore the data and displayed lists to their state before the command.
 5.  Should store the data locally in a human-editable text file, so that advanced users can edit or back up the data directly.
 6.  Should not send any student or guardian data off the user's computer.
 7.  Should run from a single JAR file without an installer, and the JAR file should not exceed 100MB.
@@ -960,7 +962,6 @@ Priorities: High (must have) - `* * *`, Medium (nice to have) - `* *`, Low (unli
 
 ### Glossary
 
-* **Mainstream OS**: Windows, Linux, Unix, or macOS
 * **Tutor**: The user of TutorReach; an independent private tutor
 * **Student**: A person the tutor teaches; stored with their name, an optional phone number and an optional guardian
 * **Guardian**: A parent or other adult responsible for a student, stored as part of that student's record with a name and phone number
