@@ -241,6 +241,8 @@ an immediately usable restore point. Repair the file while the app is closed, th
 
 Older students without IDs receive UUIDs in memory. These IDs are written on the next successful save;
 reopening an unchanged legacy file before that save generates new IDs. Lessons and enrolments require IDs.
+A lesson without an ID is an invalid record, so recovery skips it, reports it in the load warning and
+preserves its original data in the recovery backup.
 
 Stored student and guardian phone numbers use the legacy validation rule when loading, so numbers accepted
 by v1.4 remain available after upgrading. The stricter student-phone rule is applied only to new values parsed
@@ -440,7 +442,7 @@ Step 4. Otherwise, the command calls `Model#unenrolStudent()`, which removes the
 1. It splits the `n/` and `gn/` values into keywords, each of which must be a valid name part, which may be cut at an apostrophe or hyphen, as in `o'`. It reads the `p/` value as one phone number: spaces, hyphens and a leading `+` are allowed, and only the digits are kept.
 1. `FindStudentCommand#execute()` passes the predicate to `Model#updateFilteredStudentList()`, which replaces any earlier search or lesson filter.
 
-The activity diagram below shows how the predicate decides whether a student matches. Name keywords may match any part of a name. Before comparing, the predicate puts both the name and the keyword in lower case, removes the accents of Latin letters (combining marks U+0300 to U+036F after Unicode decomposition) and makes curly apostrophes straight, so `jose` finds `José`. Marks of other scripts, such as Tamil vowel signs, are kept, because they are part of their letters.
+The activity diagram below shows how the predicate decides whether a student matches. Name keywords may match any part of a name. Before comparing, the predicate puts both the name and the keyword in lower case and makes curly apostrophes straight, so `O’Connor` finds `O'Connor`.
 
 ![How findstudent decides whether a student matches](images/FindStudentActivityDiagram.png)
 
@@ -965,7 +967,7 @@ Priorities: High (must have) - `* * *`, Medium (nice to have) - `* *`, Low (unli
 * **Lesson**: A weekly time slot in which the tutor teaches a group of students, identified by its name, day, start time and end time. A lesson whose end time is earlier than its start time runs past midnight; its day is the day it starts on
 * **Enrol**: To link a student to a lesson, recording that the student attends that lesson
 * **Index**: The number shown next to a student or lesson in the currently displayed list, used in commands to refer to that student or lesson
-* **Duplicate student**: A student whose name matches an existing student's (ignoring case and extra spaces) and who shares at least one phone number with them, counting both student and guardian phone numbers
+* **Duplicate student**: A student whose name matches an existing student's (comparing only its letters, ignoring case) and who shares at least one phone number with them, counting both student and guardian phone numbers
 * **Phone-number conflict**: Reuse of a phone number as more than one student contact or as both a student and guardian contact; guardian contacts may share a number
 * **Duplicate lesson**: A lesson whose name (ignoring case and extra spaces), day, start time and end time all match an existing lesson's
 
@@ -1027,7 +1029,7 @@ testers are expected to do more *exploratory* testing.
    1. Prerequisites: The test case `addstudent n/Marcus Lim gn/Lim Hui Min gp/98761234` above has been executed.
 
    1. Test case: `addstudent n/marcus  lim p/98761234`<br>
-      Expected: No student is added, since the name matches (ignoring case and extra spaces) and a phone number is shared. The status message shows `This student already exists`.
+      Expected: No student is added, since the name matches (comparing only its letters, ignoring case) and a phone number is shared. The status message shows `This student already exists`.
 
    1. Test case: `addstudent n/Marcus Lim p/88887777`<br>
       Expected: The student is added, since no phone number is shared. The status message also warns that another student has the same name, in case it is the same child added twice.
@@ -1064,31 +1066,31 @@ testers are expected to do more *exploratory* testing.
 
 1. Editing a student while all students are shown
 
-   1. Prerequisites: List all students using `liststudents`. The first student has their own phone and a guardian, and is enrolled in at least one lesson.
+   1. Prerequisites: Start with an empty address book. Execute `addstudent n/Aiden Tan p/91234567 gn/Tan Mei gp/92345678`, `addlesson n/Math d/mon st/1600 et/1800`, `enrol s/1 l/1` and `liststudents`, in that order.
 
-   1. Test case: `editstudent 1 p/92345678`<br>
+   1. Test case: `editstudent 1 p/97654321`<br>
       Expected: Only the first student's phone number changes. Their name, guardian and lesson enrolments remain unchanged, and the status message shows the edited student's details.
 
    1. Test case: `editstudent 1 gn/Lim Mei gp/91234567`<br>
       Expected: Only the first student's guardian details are replaced. Their own details and lesson enrolments remain unchanged.
 
-   1. Test case: Repeat `editstudent 1 p/92345678` after the preceding test case.<br>
+   1. Test case: Repeat `editstudent 1 p/97654321` after the preceding test case.<br>
       Expected: No student is edited, and the data file is not rewritten. The status message shows an error stating that the incoming changes are identical to the current student details and asks the user to change at least one field.
 
-   1. Test case: `editstudent 1 p/92345678 gn/Lim Wei gp/98765432`<br>
+   1. Test case: `editstudent 1 p/97654321 gn/Lim Wei gp/98765432`<br>
       Expected: The unchanged phone number is accepted, the guardian details change and the address book is saved because at least one resulting field is different.
+
+   1. Test case: `editstudent 1 gn/Lim Hui`<br>
+      Expected: Only the first student's guardian name changes. The guardian phone and all other details remain unchanged.
 
    1. Test case: `editstudent 1 p/`<br>
       Expected: The first student's own phone is removed. Their guardian, identity and lesson enrolments remain unchanged.
 
-   1. Test case: `editstudent 1 p/92345678 gn/ gp/`<br>
-      Expected: The first student's own phone is set to `92345678` and their guardian is removed. Their identity and lesson enrolments remain unchanged.
+   1. Test case: `editstudent 1 p/97654321 gn/ gp/`<br>
+      Expected: The first student's own phone is set to `97654321` and their guardian is removed. Their identity and lesson enrolments remain unchanged.
 
    1. Test case: `editstudent 1 p/ gn/ gp/`<br>
       Expected: No student is edited because the result would have no contact number. The status message states that at least one phone number is required.
-
-   1. Test case: `editstudent 1 gn/Lim Hui`<br>
-      Expected: Only the first student's guardian name changes. The guardian phone and all other details remain unchanged.
 
    1. Other incorrect commands to try: `editstudent 1`, `editstudent 0 n/Aiden`, `editstudent 1 p/12`, `editstudent 1 n/Aiden n/Ryan`<br>
       Expected: No student is edited. The status message shows the relevant missing field, invalid index, invalid phone or duplicate-prefix error.
@@ -1303,8 +1305,8 @@ testers are expected to do more *exploratory* testing.
    1. Test case: `findstudent p/91a`<br>
       Expected: The list is unchanged. The status message states that a phone search should contain only digits, spaces, hyphens and a leading `+`.
 
-   1. Test case: `addstudent n/José O'Connor p/97654321`, followed by `findstudent n/jose`, then `FindStudent n/O’Connor`<br>
-      Expected: Both searches show José O'Connor. Accents, the style of apostrophe and the letter case of the command word are ignored.
+   1. Test case: `addstudent n/Jose O'Connor p/97654321`, followed by `findstudent n/jose`, then `FindStudent n/O’Connor`<br>
+      Expected: Both searches show Jose O'Connor. The style of apostrophe and the letter case of the command word are ignored.
 
 ### Saving data
 
